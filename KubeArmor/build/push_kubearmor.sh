@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2021 Authors of KubeArmor
 
-[[ "$REPO" == "" ]] && REPO="kubearmor/kubearmor"
+[[ "$REPO" == "" ]] && REPO="zhy76/kubearmor"
 
 [[ "$PLATFORMS" == "" ]] && PLATFORMS="linux/amd64,linux/arm64/v8"
 

@@ -3,7 +3,7 @@ name: ci-latest-release
 on:
   push:
     branches:
-      - "main"
+      - "regctl"
       - "v*"
     paths:
       - "KubeArmor/**"
@@ -19,7 +19,7 @@ on:
 jobs:
   build:
     name: Create KubeArmor latest release
-    if: github.repository == 'kubearmor/kubearmor'
+    # if: github.repository == 'kubearmor/kubearmor'
     runs-on: ubuntu-20.04
     permissions:
       id-token: write 
@@ -55,19 +55,19 @@ jobs:
       - name: Generate KubeArmor artifacts
         run: GITHUB_SHA=$GITHUB_SHA ./KubeArmor/build/build_kubearmor.sh ${{ steps.vars.outputs.tag }}
 
-      - name: Deploy KubeArmor into Kubernetes
-        run: |
-          sed -i 's/kubearmor\/kubearmor:latest/kubearmor\/kubearmor:${{ steps.vars.outputs.tag }}/g' ./KubeArmor/build/kubearmor-test-docker.yaml
-          sed -i 's/kubearmor\/kubearmor-init:latest/kubearmor\/kubearmor-init:${{ steps.vars.outputs.tag }}/g' ./KubeArmor/build/kubearmor-test-docker.yaml
-          kubectl apply -f deployments/CRD
-          kubectl apply -f ./KubeArmor/build/kubearmor-test-docker.yaml
-          kubectl wait --for=condition=ready --timeout=5m -n kube-system pod -l kubearmor-app=kubearmor
+      # - name: Deploy KubeArmor into Kubernetes
+      #   run: |
+      #     sed -i 's/kubearmor\/kubearmor:latest/kubearmor\/kubearmor:${{ steps.vars.outputs.tag }}/g' ./KubeArmor/build/kubearmor-test-docker.yaml
+      #     sed -i 's/kubearmor\/kubearmor-init:latest/kubearmor\/kubearmor-init:${{ steps.vars.outputs.tag }}/g' ./KubeArmor/build/kubearmor-test-docker.yaml
+      #     kubectl apply -f deployments/CRD
+      #     kubectl apply -f ./KubeArmor/build/kubearmor-test-docker.yaml
+      #     kubectl wait --for=condition=ready --timeout=5m -n kube-system pod -l kubearmor-app=kubearmor
 
-      - name: Test KubeArmor using Ginkgo
-        run: |
-          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-          make -C tests/
-        timeout-minutes: 30
+      # - name: Test KubeArmor using Ginkgo
+      #   run: |
+      #     go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+      #     make -C tests/
+      #   timeout-minutes: 30
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
@@ -97,8 +97,8 @@ jobs:
 
       - name: Sign the Container Images
         run: |
-          cosign sign -r kubearmor/kubearmor@${{ steps.digest.outputs.imagedigest }} --yes
-          cosign sign -r kubearmor/kubearmor-init@${{ steps.digest.outputs.initdigest }} --yes
+          cosign sign -r zhy76/kubearmor@${{ steps.digest.outputs.imagedigest }} --yes
+          cosign sign -r zhy76/kubearmor-init@${{ steps.digest.outputs.initdigest }} --yes
 
   push-stable-version:
     name: Create KubeArmor stable release
@@ -113,52 +113,31 @@ jobs:
         with:
           ref: main
 
-      - name: Pull a specific version of KubeArmor from Docker Hub
-        id: match
-        run: |
-          value=`cat STABLE-RELEASE`
-          if [ ${{ github.ref }} == "refs/heads/$value" ]; then
-            docker pull docker.io/kubearmor/kubearmor:$value
-            docker image tag kubearmor/kubearmor:$value kubearmor/kubearmor:stable
-            echo "tag=true" >> $GITHUB_OUTPUT
-          else
-            echo "tag=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Install regctl
+        uses: iarekylew00t/regctl-installer@v1
+
+      - name: Check install
+        run: regctl version
+
+      # - name: Get tag
+      #   id: match
+      #   run: |
+      #     value=`cat STABLE-RELEASE`
+      #     if [ ${{ github.ref }} == "refs/heads/$value" ]; then
+      #       echo "tag=true" >> $GITHUB_OUTPUT
+      #     else
+      #       echo "tag=false" >> $GITHUB_OUTPUT
+      #     fi
 
       - name: Login to Docker Hub
-        if: steps.match.outputs.tag == 'true'
+        # if: steps.match.outputs.tag == 'true'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_AUTHTOK }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          platforms: linux/amd64,linux/arm64/v8
-
-      - name: Push the stable version of KubeArmor to Docker Hub
-        if: steps.match.outputs.tag == 'true'
-        run: STABLE_VERSION=$(cat STABLE-RELEASE) GITHUB_SHA=$GITHUB_SHA ./KubeArmor/build/push_kubearmor.sh stable
-
-      - name: Install Cosign 
-        uses: sigstore/cosign-installer@main
-        with:
-          cosign-release: 'v2.0.0'
-
-      - name: Get Image Digest
-        id: digest
-        run: | 
-          ls -l
-          echo "imagedigest=$(jq -r '.["containerimage.digest"]' kubearmor.json)" >> $GITHUB_OUTPUT
-          echo "initdigest=$(jq -r '.["containerimage.digest"]' kubearmor-init.json)" >> $GITHUB_OUTPUT
-          echo $imagedigest 
-          echo $initdigest 
-
-      - name: Sign the Container Images
+      - name: Generate the stable version of KubeArmor in Docker Hub
+        # if: steps.match.outputs.tag == 'true'
         run: |
-          cosign sign -r kubearmor/kubearmor@${{ steps.digest.outputs.imagedigest }} --yes
-          cosign sign -r kubearmor/kubearmor-init@${{ steps.digest.outputs.initdigest }} --yes
+          value=`cat STABLE-RELEASE`
+          regctl image copy zhy76/kubearmor:$value zhy76/kubearmor:stable
